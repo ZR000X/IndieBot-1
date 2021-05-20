@@ -36,6 +36,7 @@ class Seq:
         return self.val[n] if 0 <= n < len(self.val) else 0
 
     def f(self, l=15):
+        # The signature function
         out = Seq([1])
         for n in range(1, l):
             q = 0
