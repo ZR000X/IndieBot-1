@@ -119,3 +119,4 @@ dmypy.json
 .idea/modules.xml
 .idea/vcs.xml
 /inf.py
+command_log.csv
