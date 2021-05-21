@@ -1,3 +1,4 @@
+import traceback
 import discord
 from discord.ext import commands
 
@@ -9,12 +10,20 @@ from indie_math import indie_seq, indie_oeis
 oeis_in_progress = False
 
 
+# Encapsulates bot commands for added functionality
 def command_wrapper(command):
 
-    async def wrapper(ctx, *args):
-        args = ctx.message.content.split(" ")
+    #
+    async def wrapper(ctx):
+        args = ctx.message.content.split(" ")[1:]
         print("Command used:", command.__name__)
-        await command(ctx, *args)
+        try:
+            await command(ctx, *args)
+            with open("command_log.csv", "a+") as f:
+                f.write(f"{command.__name__},{ctx.message.author.id}\n")
+        except Exception:
+            await ctx.message.add_reaction("❌")
+            print(traceback.format_exc())
 
     return wrapper
 
@@ -31,6 +40,7 @@ def initialize_events(bot):
     @bot.event
     async def on_ready():
         await bot.change_presence(activity=discord.Game("around"))
+        print("IndieBot is live.")
 
     @bot.event
     async def on_message(message):
@@ -39,32 +49,21 @@ def initialize_events(bot):
 
 def initialize_commands(bot):
 
-    @bot.command(name="snr", pass_context=True)
+    @bot.command(name="snr")
     @command_wrapper
     async def snr(ctx, *args):
-        args = args[1:]
-        try:
-            await ctx.message.channel.send(str(indie_seq.Seq([int(k) for k in args]).f()))
-        except Exception as exc:
-            await ctx.message.add_reaction("❌")
-            print("SNR command error:", exc)
+        await ctx.message.channel.send(str(indie_seq.Seq([int(k) for k in args]).f()))
 
-    @bot.command(name="oeis", pass_context=True)
+    @bot.command(name="oeis")
     @command_wrapper
     async def oeis(ctx, *args):
         global oeis_in_progress
-        args = args[1:]
-        try:
-            if not oeis_in_progress:
-                oeis_in_progress = True
-                if len(args[1:]) >= 2:
-                    await ctx.message.channel.send(indie_oeis.get_sequence_from_b_file(raw[1]))
-                else:
-                    await ctx.message.channel.send(indie_oeis.get_sequence_from_b_file(str(random.randint(1, 341962))))
-                oeis_in_progress = False
+        if not oeis_in_progress:
+            oeis_in_progress = True
+            if len(args) > 0:
+                await ctx.message.channel.send(indie_oeis.get_sequence_from_b_file(args[0]))
             else:
-                await ctx.message.add_reaction("❌")
-        except Exception as exc:
+                await ctx.message.channel.send(indie_oeis.get_sequence_from_b_file(str(random.randint(1, 341962))))
+            oeis_in_progress = False
+        else:
             await ctx.message.add_reaction("❌")
-            print("OEIS command error:", exc)
-
