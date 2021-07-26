@@ -11,21 +11,69 @@ from discord_slash import SlashCommand
 from indie_math import indie_seq, indie_oeis, indie_collatz, indie_pig
 from indie_utils import logger
 import indie_help
+import config
 
 import pandas as pd
+import os
 
 oeis_in_progress = False
 
 class IndieBot(commands.Bot):
-    def __init__(self, prefix) -> None:
+    def __init__(self, prefix, bot_id) -> None:
         super().__init__(command_prefix=prefix)
         self.prefix = prefix
+        self.bot_id = bot_id
+        self.paths = {}
+        if bot_id in config.data_paths:
+            self.paths["data"] = config.data_paths[bot_id]
+        else:
+            self.paths["data"] = config.data_paths["default"]
         self.slash = SlashCommand(self, sync_commands=True)        
+        
+        # Call initialization helper methods
+        self.initialize_paths()
         self.initialize_events()
-        self.initialize_commands()             
+        self.initialize_commands()
+        # self.initialize_help_commands()
+
+        self.data = {}
+        # Initialising data files
+        self.data_files = {
+            "messages",
+            "user_statuses",
+            "user_histories",
+            "global_stats"
+        }
+        for data_file in self.data_files:
+            path = self.paths["data"]+data_file+config.data_file_extension
+            if os.path.isfile(path):
+                self.data[data_file] = pd.read_csv(path)
+            else:
+                self.data[data_file] = pd.DataFrame({})
+                self.data[data_file].to_csv(path)        
+
+    def initialize_paths(self):
+        """
+        Helper method to ensure all needed directories are in order
+        """
+        for path in self.paths:
+            self.force_path_to_exist(self.paths[path])          
+
+    def force_path_to_exist(self, path) -> bool:
+        """
+        Helper method to create a file or directory of a certain path if it does not exist,
+        then also returns whether or not the path existed.
+        """
+        exists = os.path.exists(path)
+        if not exists:
+            os.makedirs(path)
+        return exists
 
     # [Method is run on construction]
-    def initialize_events(self):
+    def initialize_events(self) -> None:
+        """
+        Helper method to set actionable events in order
+        """
 
         @self.event
         async def on_ready():
@@ -34,10 +82,43 @@ class IndieBot(commands.Bot):
 
         @self.event
         async def on_message(message):
+            # - datetime
+            # - author
+            # - server
+            # - channel
+            # - command name (None if not command)
+            # - input size [# characters] (a way of monitoring usage, to enforce any necessary limits)
+            # - output size [# characters] (a way of monitoring usage, to enforce any necessary limits)
+            # - gas fee (we can manually set gas fees per command in a csv, or at some point adjust them dynamically)
+
+            df = self.data["messages"]
+            df2 = pd.DataFrame({
+                'message_id': [str(message.id)],
+                'datetime': [str(message.created_at.now())],
+                'author_id': [str(message.author.id)],
+                'author_name': [str(message.author.name)],
+                'server': [str(message.guild)],
+                'channel': [str(message.channel)],
+                'input_size': [str(len(message.content))],
+            })
+
+            # Compute other information to be stored
+            # new_data['command_name']
+            # new_data['output_size']
+            # new_data['gas_fee']
+
+            df = df.append(pd.DataFrame(df2))
+            path = self.paths["data"]+"messages"+config.data_file_extension
+            df.to_csv(path)
+            self.data["messages"] = df
+
             await self.process_commands(message)
 
     # [Method is run on construction]
-    def initialize_commands(self):
+    def initialize_commands(self) -> None:
+        """
+        Helper method to set actionable commands in order
+        """
 
         @self.command(name="snr")
         @logger("all")
@@ -130,8 +211,17 @@ class IndieBot(commands.Bot):
         async def pig_quit(ctx, *args):
             await ctx.message.channel.send(indie_pig.PigGame.play(ctx.message.author.name, "quit"))
 
+        @self.command(name="save")
+        @logger("all")
+        async def save(ctx, *args):
+            self.save_data()
+            if ctx.message.author.name in ['Zeddar', 'Conrad']:
+                self.save_data()
 
-    def initialize_help_commands(self):
+    def initialize_help_commands(self) -> None:
+        """
+        Helper method to set actionable help commands in order
+        """
 
         @self.command(name="help")
         @logger("all")
@@ -140,3 +230,9 @@ class IndieBot(commands.Bot):
                 await ctx.message.channel.send(indie_help.summary())
             else:
                 await ctx.message.channel.send(indie_help.specific(args))
+
+    def save_data(self):
+        for data_file in self.data_files:
+            path = self.paths["data"]+data_file+config.data_file_extension
+            self.data[data_file].to_csv(path)
+                
