@@ -1,13 +1,15 @@
-# inf contains the bot token, which is excluded from this repo
+# Authors: Zeddar
+# Associations: Indie Academy Discord Server
+# License: MIT
+
+from indie_bot import IndieBot
+from keep_alive import keep_alive
+from asyncio import get_event_loop
 import inf
 
-from asyncio import get_event_loop
-
-from bot import create_bot_instance
-
-bot = create_bot_instance(".", 844015565243940864)
-
+bot = IndieBot(prefix=".")
 print("Initializing...")
 loop = get_event_loop()
-loop.run_until_complete(bot.start(inf.TOKEN))
-print("Bot loop complete.")
+loop.run_until_complete(bot.start(inf.TOKEN_DEV))
+print("Bot loop complete.")  
+keep_alive()
