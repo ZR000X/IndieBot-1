@@ -1,8 +1,9 @@
-# Authors: Conrad, Zeddar
+# Authors: Zeddar, Conrad
 # Associations: Indie Academy Discord Server
 # License: MIT
 
 import random
+import time
 
 import discord
 from discord.ext import commands
@@ -15,6 +16,7 @@ import config
 
 import pandas as pd
 import os
+import json
 
 oeis_in_progress = False
 
@@ -34,23 +36,42 @@ class IndieBot(commands.Bot):
         self.initialize_paths()
         self.initialize_events()
         self.initialize_commands()
+        
+        ### TODO: There seems to be a problem with this
         # self.initialize_help_commands()
 
         self.data = {}
         # Initialising data files
-        self.data_files = {
+        self.data_frame_files = {
             "messages",
-            "user_statuses",
             "user_histories",
             "global_stats"
         }
-        for data_file in self.data_files:
+        for data_file in self.data_frame_files:
             path = self.paths["data"]+data_file+config.data_file_extension
             if os.path.isfile(path):
                 self.data[data_file] = pd.read_csv(path)
             else:
                 self.data[data_file] = pd.DataFrame({})
-                self.data[data_file].to_csv(path)        
+                self.data[data_file].to_csv(path)
+
+        self.json_files = {
+            "balances",
+        }
+        for json_file in self.json_files:
+            path = self.paths["data"]+json_file+".json"
+            if os.path.isfile(path):
+                try:
+                    self.data[json_file] = json.loads(path)
+                except:
+                    self.data[json_file] = {}
+                    with open(path, 'w') as fp:
+                        json.dump(self.data[json_file], fp)
+            else:
+                self.data[json_file] = {}
+                with open(path, 'w') as fp:
+                    json.dump(self.data[json_file], fp)
+
 
     def initialize_paths(self):
         """
@@ -79,6 +100,10 @@ class IndieBot(commands.Bot):
         async def on_ready():
             await self.change_presence(activity=discord.Game("around"))
             print("IndieBot is live.")
+            # continuously save self's data files
+            # while True:
+            #     time.sleep(config.miliseconds_to_save)
+            #     self.save_data()
 
         @self.event
         async def on_message(message):
@@ -212,11 +237,67 @@ class IndieBot(commands.Bot):
             await ctx.message.channel.send(indie_pig.PigGame.play(ctx.message.author.name, "quit"))
 
         @self.command(name="save")
-        @logger("all")
+        @logger("modonly")
         async def save(ctx, *args):
             self.save_data()
-            if ctx.message.author.name in ['Zeddar', 'Conrad']:
-                self.save_data()
+            await ctx.message.channel.send("Saved.")
+
+        @self.command(name="balance")
+        @logger("all")
+        async def balance(ctx, *args):
+            bals = self.data["balances"]
+            user = ctx.message.author.id
+            bal = 0
+            if user in bals:
+                bal = bals[user]
+            else:
+                bals[user] = 0            
+            await ctx.message.channel.send(ctx.message.author.name+", your balance is "+str(bal)+".")
+
+        @self.command(name="credit")
+        @logger("modonly")
+        async def credit(ctx, *args):
+            """
+            Command with credit users mentioned with first float arg detected
+            """
+            users_mentioned = ctx.message.mentions
+            credit = 0
+            for arg in args:
+                try:
+                    credit = float(arg)
+                    await ctx.message.channel.send("Credited succesfully, "+ctx.message.author.name+".")
+                    break
+                except:
+                    pass
+            bals = self.data["balances"]
+            for user in users_mentioned:
+                if user.id in bals:
+                    bals[user.id] += credit
+                else:
+                    bals[user.id] = credit
+
+        @self.command(name="debit")
+        @logger("modonly")
+        async def debit(ctx, *args):
+            """
+            Command with credit users mentioned with first float arg detected
+            """
+            users_mentioned = ctx.message.mentions
+            debit = 0
+            for arg in args:
+                try:
+                    debit = float(arg)
+                    await ctx.message.channel.send("Debited succesfully, "+ctx.message.author.name+".")
+                    break
+                except:
+                    pass
+            bals = self.data["balances"]
+            for user in users_mentioned:
+                if user.id in bals:
+                    bals[user.id] -= debit
+                else:
+                    bals[user.id] = -debit                           
+            
 
     def initialize_help_commands(self) -> None:
         """
@@ -232,7 +313,14 @@ class IndieBot(commands.Bot):
                 await ctx.message.channel.send(indie_help.specific(args))
 
     def save_data(self):
-        for data_file in self.data_files:
-            path = self.paths["data"]+data_file+config.data_file_extension
-            self.data[data_file].to_csv(path)
+        for df in self.data_frame_files:
+            path = self.paths["data"]+df+config.data_file_extension
+            self.data[df].to_csv(path)
+        for json_file in self.json_files:
+            path = self.paths["data"]+json_file+".json"
+            with open(path, 'w') as fp:
+                json.dump(self.data[json_file], fp)
+                
+
+        
                 

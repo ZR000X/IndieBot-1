@@ -6,3 +6,5 @@ data_paths = {
 }
 
 data_file_extension = ".csv"
+
+miliseconds_to_save = 500
