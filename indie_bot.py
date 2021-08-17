@@ -47,46 +47,24 @@ class IndieBot(commands.Bot):
         self.data = {} # This object contains all of this bot's data
         # Initialising data files
         self.data_files = {
-            "messages.dtf",
-            "user_histories.dtf",
-            "global_stats.dtf",
-            "balances.json",
-            "users.json",
-            "users_asked_to_be_registered.json"
+            "messages.csv": "df",
+            "user_histories.csv": "df",
+            "global_stats.csv": "df",
+            "balances.json": "dict",
+            "users.json": "list",
+            "users_asked_to_be_registered.json": "list"
         }
 
         for df in self.data_files:
             self.data[df] = self.get_data(name=df[:df.find(".")],ext=df[df.find("."):])
-                
-
-        # for data_file in self.data_frame_files:
-        #     path = self.config["paths"]["data"]+data_file+config.data_file_extension
-        #     if os.path.isfile(path):
-        #         self.data[data_file] = pd.read_csv(path)
-        #     else:
-        #         self.data[data_file] = pd.DataFrame({})
-        #         self.data[data_file].to_csv(path)
-
-        # self.json_files = {
-        #     "balances"
-        # }
-        # for json_file in self.json_files:
-        #     path = self.config["paths"]["data"]+json_file+".json"
-        #     if os.path.isfile(path):
-        #         try:
-        #             self.data[json_file] = json.loads(path)
-        #         except:
-        #             self.data[json_file] = {}
-        #             with open(path, 'w') as fp:
-        #                 json.dump(self.data[json_file], fp)
-        #     else:
-        #         self.data[json_file] = {}
-        #         with open(path, 'w') as fp:
-        #             json.dump(self.data[json_file], fp)
-
-        # self.list_files = {
-        #     "users"
-        # }
+            if self.data[df] is None:
+                ext = self.data_files[df]
+                if ext == "df":
+                    self.data[df] = pd.DataFrame()
+                elif ext == "dict":
+                    self.data[df] = {}
+                elif ext == "list":
+                    self.data[df] = []
 
     def get_data(self, name, ext):
         """
@@ -101,19 +79,19 @@ class IndieBot(commands.Bot):
             if ext == "dtf":
                 return pd.read_csv(file_path)
 
-    def sav_data(self, data, name, extension, overwrite=False) -> bool:
+    def sav_data(self, data, name, ext, overwrite=False) -> bool:
         """
         Allows other code to seamlessly save a chunk of data by name and extension,
         returns True if successful, false if not
         """
         data_path = self.config["paths"]["data"]
-        file_path = data_path + "/" + name + "." + extension        
+        file_path = data_path + "/" + name + "." + ext        
         if overwrite or not os.path.exists(file_path):
-            if extension == "json":
+            if ext == "json":
                 with open(file_path, 'w') as fp:
                     json.dump(data, fp)
                 return True
-            if extension == "dtf":
+            if ext == "dtf":
                 if type(data) is pd.DataFrame:
                     data.to_csv(file_path)
                     return True
@@ -161,6 +139,9 @@ class IndieBot(commands.Bot):
             # - input size [# characters] (a way of monitoring usage, to enforce any necessary limits)
             # - output size [# characters] (a way of monitoring usage, to enforce any necessary limits)
             # - gas fee (we can manually set gas fees per command in a csv, or at some point adjust them dynamically)
+
+            if message.author == self:
+                return
 
             df = self.data["messages.dtf"]
             if df is None:
@@ -293,7 +274,7 @@ class IndieBot(commands.Bot):
         @self.command(name="balance")
         @logger("all")
         async def balance(ctx, *args):
-            bals = self.data["balances"]
+            bals = self.data["balances.json"]
             user = ctx.message.author.id
             bal = 0
             if user in bals:
@@ -309,15 +290,16 @@ class IndieBot(commands.Bot):
             Command with credit users mentioned with first float arg detected
             """
             users_mentioned = ctx.message.mentions
+            user_mention = ctx.author.mention
             credit = 0
             for arg in args:
                 try:
                     credit = float(arg)
-                    await ctx.message.channel.send("Credited succesfully, "+ctx.message.author.name+".")
+                    await ctx.message.channel.send(user_mention+", we have successfully debited as you commanded.")
                     break
                 except:
                     pass
-            bals = self.data["balances"]
+            bals = self.data["balances.json"]
             for user in users_mentioned:
                 if user.id in bals:
                     bals[user.id] += credit
@@ -331,15 +313,16 @@ class IndieBot(commands.Bot):
             Command with credit users mentioned with first float arg detected
             """
             users_mentioned = ctx.message.mentions
+            user_mention = ctx.author.mention
             debit = 0
             for arg in args:
                 try:
                     debit = float(arg)
-                    await ctx.message.channel.send("Debited succesfully, "+ctx.message.author.name+".")
+                    await ctx.message.channel.send(user_mention+", we have successfully debited as you commanded.")
                     break
                 except:
                     pass
-            bals = self.data["balances"]
+            bals = self.data["balances.json"]
             for user in users_mentioned:
                 if user.id in bals:
                     bals[user.id] -= debit
@@ -355,20 +338,8 @@ class IndieBot(commands.Bot):
             if they accept, the bot will consider them registered
             """
             user = ctx.message.author
-            user_mention = "<@"+str(user.id)+">"
+            user_mention = ctx.author.mention
             chan_mention = "<#876850365730021386>"
-            # users = self.data["users.json"]
-            # if users is None:
-            #     self.data["users.json"] = []
-            # users_asked = self.data["users_asked_to_be_registered.json"]
-            # if users_asked is None:
-            #     self.data["users_asked_to_be_registered.json"] = []
-            #     users_asked = []
-            
-            if self.data["users.json"] is None:
-                self.data["users.json"] = []
-            if self.data["users_asked_to_be_registered.json"] is None:
-                self.data["users_asked_to_be_registered.json"] = []
             
             if user in self.data["users.json"]:
                 await ctx.message.channel.send(user_mention+", you are already registered. :blue_heart:")
@@ -387,11 +358,6 @@ class IndieBot(commands.Bot):
             """
             user = ctx.message.author
             user_mention = "<@"+str(user.id)+">"
-            
-            if self.data["users.json"] is None:
-                self.data["users.json"] = []
-            if self.data["users_asked_to_be_registered.json"] is None:
-                self.data["users_asked_to_be_registered.json"] = []
 
             if user in self.data["users_asked_to_be_registered.json"]:
                 self.data["users.json"].append(user)
@@ -418,17 +384,3 @@ class IndieBot(commands.Bot):
         for df in self.data_files:
             self.sav_data(data=self.data[df],name=df[:df.find(".")],
                 ext=df[df.find("."):],overwrite=overwrite)
-
-        # for df in self.data_frame_files:
-        #     path = self.paths["data"]+df+config.data_file_extension
-        #     self.data[df].to_csv(path)
-        # for json_file in self.json_files:
-        #     path = self.paths["data"]+json_file+".json"
-        #     with open(path, 'w') as fp:
-        #         json.dump(self.data[json_file], fp)
-                
-
-# ins = IndieBot(".", "jeff")
-# data = ["Jeff", "Bezzi"]
-# worked = ins.sav_data(data, "test", "json", overwrite=True)
-# print(worked)
