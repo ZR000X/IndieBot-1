@@ -91,3 +91,4 @@ def initialize_commands(bot):
             oeis_in_progress = False
         else:
             await ctx.message.add_reaction("❌")
+

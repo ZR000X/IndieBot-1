@@ -25,11 +25,15 @@ class IndieBot(commands.Bot):
         super().__init__(command_prefix=prefix)
         self.prefix = prefix
         self.bot_id = bot_id
-        self.paths = {}
+        self.config = {}
+        self.config["paths"] = {}
         if bot_id in config.data_paths:
-            self.paths["data"] = config.data_paths[bot_id]
+            self.config["paths"]["data"] = config.data_paths[bot_id]
         else:
-            self.paths["data"] = config.data_paths["default"]
+            self.config["paths"]["data"] = f"dat/botdat/{bot_id}"
+        if config.data_file_extension is not None:
+            self.config["data_file_extension"] = ".dat"
+
         self.slash = SlashCommand(self, sync_commands=True)        
         
         # Call initialization helper methods
@@ -40,45 +44,87 @@ class IndieBot(commands.Bot):
         ### TODO: There seems to be a problem with this
         # self.initialize_help_commands()
 
-        self.data = {}
+        self.data = {} # This object contains all of this bot's data
         # Initialising data files
-        self.data_frame_files = {
-            "messages",
-            "user_histories",
-            "global_stats"
+        self.data_files = {
+            "messages.dtf",
+            "user_histories.dtf",
+            "global_stats.dtf",
+            "balances.json",
+            "users.json",
+            "users_asked_to_be_registered.json"
         }
-        for data_file in self.data_frame_files:
-            path = self.paths["data"]+data_file+config.data_file_extension
-            if os.path.isfile(path):
-                self.data[data_file] = pd.read_csv(path)
-            else:
-                self.data[data_file] = pd.DataFrame({})
-                self.data[data_file].to_csv(path)
 
-        self.json_files = {
-            "balances",
-        }
-        for json_file in self.json_files:
-            path = self.paths["data"]+json_file+".json"
-            if os.path.isfile(path):
-                try:
-                    self.data[json_file] = json.loads(path)
-                except:
-                    self.data[json_file] = {}
-                    with open(path, 'w') as fp:
-                        json.dump(self.data[json_file], fp)
-            else:
-                self.data[json_file] = {}
-                with open(path, 'w') as fp:
-                    json.dump(self.data[json_file], fp)
+        for df in self.data_files:
+            self.data[df] = self.get_data(name=df[:df.find(".")],ext=df[df.find("."):])
+                
 
+        # for data_file in self.data_frame_files:
+        #     path = self.config["paths"]["data"]+data_file+config.data_file_extension
+        #     if os.path.isfile(path):
+        #         self.data[data_file] = pd.read_csv(path)
+        #     else:
+        #         self.data[data_file] = pd.DataFrame({})
+        #         self.data[data_file].to_csv(path)
+
+        # self.json_files = {
+        #     "balances"
+        # }
+        # for json_file in self.json_files:
+        #     path = self.config["paths"]["data"]+json_file+".json"
+        #     if os.path.isfile(path):
+        #         try:
+        #             self.data[json_file] = json.loads(path)
+        #         except:
+        #             self.data[json_file] = {}
+        #             with open(path, 'w') as fp:
+        #                 json.dump(self.data[json_file], fp)
+        #     else:
+        #         self.data[json_file] = {}
+        #         with open(path, 'w') as fp:
+        #             json.dump(self.data[json_file], fp)
+
+        # self.list_files = {
+        #     "users"
+        # }
+
+    def get_data(self, name, ext):
+        """
+        Allows other code to seamlessly fetch data by name and extension
+        """
+        data_path = self.config["paths"]["data"]
+        file_path = data_path + "/" + name + "." + ext
+        if os.path.exists(file_path):
+            if ext == "json":
+                with open(file_path, 'w') as fp:
+                    return json.load(fp)
+            if ext == "dtf":
+                return pd.read_csv(file_path)
+
+    def sav_data(self, data, name, extension, overwrite=False) -> bool:
+        """
+        Allows other code to seamlessly save a chunk of data by name and extension,
+        returns True if successful, false if not
+        """
+        data_path = self.config["paths"]["data"]
+        file_path = data_path + "/" + name + "." + extension        
+        if overwrite or not os.path.exists(file_path):
+            if extension == "json":
+                with open(file_path, 'w') as fp:
+                    json.dump(data, fp)
+                return True
+            if extension == "dtf":
+                if type(data) is pd.DataFrame:
+                    data.to_csv(file_path)
+                    return True
+        return False
 
     def initialize_paths(self):
         """
         Helper method to ensure all needed directories are in order
         """
-        for path in self.paths:
-            self.force_path_to_exist(self.paths[path])          
+        for path in self.config["paths"]:
+            self.force_path_to_exist(self.config["paths"][path])          
 
     def force_path_to_exist(self, path) -> bool:
         """
@@ -116,7 +162,10 @@ class IndieBot(commands.Bot):
             # - output size [# characters] (a way of monitoring usage, to enforce any necessary limits)
             # - gas fee (we can manually set gas fees per command in a csv, or at some point adjust them dynamically)
 
-            df = self.data["messages"]
+            df = self.data["messages.dtf"]
+            if df is None:
+                df = pd.DataFrame()
+
             df2 = pd.DataFrame({
                 'message_id': [str(message.id)],
                 'datetime': [str(message.created_at.now())],
@@ -133,9 +182,8 @@ class IndieBot(commands.Bot):
             # new_data['gas_fee']
 
             df = df.append(pd.DataFrame(df2))
-            path = self.paths["data"]+"messages"+config.data_file_extension
-            df.to_csv(path)
-            self.data["messages"] = df
+            self.sav_data(df, "messages", "dtf")
+            self.data["messages.dtf"] = df
 
             await self.process_commands(message)
 
@@ -239,7 +287,7 @@ class IndieBot(commands.Bot):
         @self.command(name="save")
         @logger("modonly")
         async def save(ctx, *args):
-            self.save_data()
+            self.save_data_files()
             await ctx.message.channel.send("Saved.")
 
         @self.command(name="balance")
@@ -296,8 +344,62 @@ class IndieBot(commands.Bot):
                 if user.id in bals:
                     bals[user.id] -= debit
                 else:
-                    bals[user.id] = -debit                           
+                    bals[user.id] = -debit
+
+        @self.command(name="register")
+        @logger("all")
+        async def register(ctx, *args):
+            """
+            This command will trigger a check if the user is registered,
+            if not, the bot will ask them to review the terms and conditions and accept,
+            if they accept, the bot will consider them registered
+            """
+            user = ctx.message.author
+            user_mention = "<@"+str(user.id)+">"
+            chan_mention = "<#876850365730021386>"
+            # users = self.data["users.json"]
+            # if users is None:
+            #     self.data["users.json"] = []
+            # users_asked = self.data["users_asked_to_be_registered.json"]
+            # if users_asked is None:
+            #     self.data["users_asked_to_be_registered.json"] = []
+            #     users_asked = []
             
+            if self.data["users.json"] is None:
+                self.data["users.json"] = []
+            if self.data["users_asked_to_be_registered.json"] is None:
+                self.data["users_asked_to_be_registered.json"] = []
+            
+            if user in self.data["users.json"]:
+                await ctx.message.channel.send(user_mention+", you are already registered. :blue_heart:")
+            else:
+                self.data["users_asked_to_be_registered.json"].append(user)
+                await ctx.message.channel.send(user_mention+", do you accept the "+chan_mention+
+                " (Indie Library Terms of Service). Command .accept if you do. :blue_heart:")
+        
+        @self.command(name="accept")
+        @logger("all")
+        async def accept(ctx, *args):
+            """
+            This command will trigger a check if the user has asked to be registered.
+            If they have, then calling this triggers adding them to registered users.
+            If they have not, they will be asked to type .register first.
+            """
+            user = ctx.message.author
+            user_mention = "<@"+str(user.id)+">"
+            
+            if self.data["users.json"] is None:
+                self.data["users.json"] = []
+            if self.data["users_asked_to_be_registered.json"] is None:
+                self.data["users_asked_to_be_registered.json"] = []
+
+            if user in self.data["users_asked_to_be_registered.json"]:
+                self.data["users.json"].append(user)
+                self.data["users_asked_to_be_registered.json"].remove(user)
+                await ctx.message.channel.send(user_mention+", you have been successfully registered. :blue_heart:")
+            else:
+                await ctx.message.channel.send(user_mention+", have not commanded .register yet. "
+                "Please do so first. :blue_heart:")
 
     def initialize_help_commands(self) -> None:
         """
@@ -312,15 +414,21 @@ class IndieBot(commands.Bot):
             else:
                 await ctx.message.channel.send(indie_help.specific(args))
 
-    def save_data(self):
-        for df in self.data_frame_files:
-            path = self.paths["data"]+df+config.data_file_extension
-            self.data[df].to_csv(path)
-        for json_file in self.json_files:
-            path = self.paths["data"]+json_file+".json"
-            with open(path, 'w') as fp:
-                json.dump(self.data[json_file], fp)
+    def save_data_files(self, overwrite=True):
+        for df in self.data_files:
+            self.sav_data(data=self.data[df],name=df[:df.find(".")],
+                ext=df[df.find("."):],overwrite=overwrite)
+
+        # for df in self.data_frame_files:
+        #     path = self.paths["data"]+df+config.data_file_extension
+        #     self.data[df].to_csv(path)
+        # for json_file in self.json_files:
+        #     path = self.paths["data"]+json_file+".json"
+        #     with open(path, 'w') as fp:
+        #         json.dump(self.data[json_file], fp)
                 
 
-        
-                
+# ins = IndieBot(".", "jeff")
+# data = ["Jeff", "Bezzi"]
+# worked = ins.sav_data(data, "test", "json", overwrite=True)
+# print(worked)

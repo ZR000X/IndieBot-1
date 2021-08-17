@@ -1,8 +1,7 @@
 # Customise the data_paths for any bot id
 # TO change: add {id: data_path}
 data_paths = {
-    "alpha": "dat/botdat/alpha/",
-    "default": "dat/botdat/default"
+    "alpha": "dat/botdat/alpha/"
 }
 
 data_file_extension = ".csv"

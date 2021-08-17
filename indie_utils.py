@@ -7,9 +7,14 @@ sys.path.append(r'C:/dev/python/IndieBot/IB/dat')
 mods = []
 
 if not mods:
-    with open(r"dat/mods.csv", "r+") as f:
-        for each in f.readlines():
-            mods.append(each.replace("\n", ""))
+    import os
+    if not os.path.exists("dat/mods.csv"):
+        os.makedirs("dat/mods.csv")
+    from pathlib import Path
+    # Path("dat/mods.csv").mkdir(parents=True, exist_ok=True)
+    # with open(r"dat/mods.csv", "r+") as f:
+    #     for each in f.readlines():
+    #         mods.append(each.replace("\n", ""))
 
 
 def logger(command_type):
